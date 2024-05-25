@@ -1,32 +1,44 @@
 import random
+import sys
+from pathlib import Path
+
+
 import yaml
+sys.path.append("..")
+from helpers.graph_plot import Plotting
+from helpers.helper import Node, Helper_Functions, Tree
+import time
 
-from graph_plot import Plotting
-from helper import Node, RRT_Helper_Functions, Tree
 
+class RRT:  
+    """ Class to compute path between two points using RRT"""
 
-class RRT:
     def __init__(
         self,
-        start,
-        goal,
-        area_x,
-        area_y,
-        obstacle_list,
-        robot_radius,
-        padding,
+        start: list,
+        goal: list,
+        area_x: list,
+        area_y: list,
+        obstacle_list: list,
+        robot_radius: float,
+        padding: float,
         goal_check_distance=1.0,
         path_resolution=0.05,
         max_iteration=100000,
+        show_live_plot=False
     ):
         """
-        start: [x,y] of starting point
-        goal: [x,y] of goal
-        area_x: Min and max x limits of the map
-        area_y: Min and max y limits of the map
-        goal_check_distance: DIstance below which robot is assumed to have reached the goal
-        path_resolution = Resolution of the path to check for obstacles (Should be less than obstacle width),
-        max_iterations = Maximum itreations of RRT Node that needs to be run
+        start: [x,y] of starting point (m,m)
+        goal: [x,y] of goal (m,m)
+        area_x: Min and max x limits of the map (m,m)
+        area_y: Min and max y limits of the map (m,m)
+        obstacle_list: [ox, oy, os] center point and size of the obstacle (m,m,m)
+        robot_radius: radius of the robot (m)
+        padding: Extra padding around the robot, for safe planning along obstacles (m)
+        goal_check_distance: DIstance below which robot is assumed to have reached the goal (m^2)
+        path_resolution: Resolution of the path to check for obstacles, should be less than obstacle width. (m)
+        max_iterations: Maximum itreations of RRT Node that needs to be run
+        show_live_plot: Plot rrt tree as it is expanding 
         """
         self.index = 0
         self.start = Node(start[0], start[1], self.index)
@@ -37,14 +49,15 @@ class RRT:
         self.goal_check_distance = goal_check_distance
         self.path_resolution = path_resolution
         self.max_iteration = max_iteration
-        self.path_found = False
-        self.enable_realtime_plot = True
+        self.enable_realtime_plot = show_live_plot
         self.plotting = Plotting()
         self.plotting.plot_obstacles(self.obstacle_list)
         self.robot_radius = robot_radius
         self.padding = padding
+        self.path_found = False
 
     def find_path(self):
+        """ Comutes Path between the two points"""
         iteration = 0
         tree = Tree()
         tree.add_new_node(self.start)
@@ -56,19 +69,19 @@ class RRT:
                 round(random.uniform(self.area_x[0], self.area_x[1]), 2),
                 round(random.uniform(self.area_y[0], self.area_y[1]), 2),
             ]
-            if RRT_Helper_Functions.check_collision(
+            if Helper_Functions.check_collision(
                 random_node_point, self.obstacle_list, self.robot_radius, self.padding
             ):
                 continue
             random_node = Node(random_node_point[0], random_node_point[1])
-            nearest_node_index = RRT_Helper_Functions.nearest_node_in_tree(
+            nearest_node_index = Helper_Functions.nearest_node_in_tree(
                 tree.tree_of_points, random_node_point
             )
             (
                 path_to_nearest_node,
                 goal_reached,
                 path_valid,
-            ) = RRT_Helper_Functions.steer_to_node(
+            ) = Helper_Functions.steer_to_node(
                 tree.tree_of_points[nearest_node_index],
                 random_node_point,
                 self.goal.point,
@@ -85,8 +98,10 @@ class RRT:
                     self.goal.index = self.index
                     self.goal.path_to_parent = path_to_nearest_node
                     tree.add_new_node(path_to_nearest_node[-1])
-                    plot_list_x.append(tree.tree_of_points[nearest_node_index][0])
-                    plot_list_y.append(tree.tree_of_points[nearest_node_index][1])
+                    plot_list_x.append(
+                        tree.tree_of_points[nearest_node_index][0])
+                    plot_list_y.append(
+                        tree.tree_of_points[nearest_node_index][1])
                     plot_list_x.append(tree.tree_of_points[self.index][0])
                     plot_list_y.append(tree.tree_of_points[self.index][1])
                     if self.enable_realtime_plot:
@@ -99,8 +114,10 @@ class RRT:
                     random_node.index = self.index
                     random_node.path_to_parent = path_to_nearest_node
                     tree.add_new_node(random_node)
-                    plot_list_x.append(tree.tree_of_points[nearest_node_index][0])
-                    plot_list_y.append(tree.tree_of_points[nearest_node_index][1])
+                    plot_list_x.append(
+                        tree.tree_of_points[nearest_node_index][0])
+                    plot_list_y.append(
+                        tree.tree_of_points[nearest_node_index][1])
                     plot_list_x.append(tree.tree_of_points[self.index][0])
                     plot_list_y.append(tree.tree_of_points[self.index][1])
                     if self.enable_realtime_plot:
@@ -109,7 +126,7 @@ class RRT:
                         path_to_nearest_node,
                         goal_reached,
                         path_valid,
-                    ) = RRT_Helper_Functions.steer_to_node(
+                    ) = Helper_Functions.steer_to_node(
                         random_node_point,
                         self.goal.point,
                         self.goal.point,
@@ -143,6 +160,7 @@ class RRT:
             print("Path Not Found")
 
     def show_final_path(self, tree, goal_index):
+        """ Display the final path that is calculated"""
         index_to_print = goal_index
         plot_list_x = []
         plot_list_y = []
@@ -159,16 +177,28 @@ class RRT:
 
 
 def main():
-    with open("resources.yaml") as stream:
+    # Get resources from yaml file
+    with open("../resources.yaml") as stream:
         try:
             resources_loaded = yaml.safe_load(stream)
             print(resources_loaded)
         except yaml.YAMLError as exc:
-            print(exc)
-    obstacle_zone = resources_loaded["map"]["obstacle_list"]
-
-    find_path = RRT([0.0, 40.0], [30.0, 30.0], [0.0, 40.0],
-                    [0.0, 40.0], obstacle_zone, 1.8, 0.2)
+            print("File Not read")
+    obstacle_zone = resources_loaded["Map"]["obstacle_list"]
+    map_x_limits = resources_loaded["Map"]["limits_x"]
+    map_y_limits = resources_loaded["Map"]["limits_y"]
+    start = resources_loaded["PathPlanning"]["start"]
+    goal = resources_loaded["PathPlanning"]["goal"]
+    robot_radius = resources_loaded["Robot"]["size"]
+    robot_padding = resources_loaded["Robot"]["padding"]
+    goal_check_distance = resources_loaded["PathPlanning"]["goal_check_distance"]
+    show_live_plot = resources_loaded["PathPlanning"]["show_live_plot"]
+    max_iterations = resources_loaded["PathPlanning"]["RRT"]["max_iteration"]
+    path_resolution = resources_loaded["PathPlanning"]["RRT"]["path_resolution"]
+    
+    # Call the RRT Function
+    find_path = RRT(start, goal, map_x_limits,
+                    map_y_limits, obstacle_zone, robot_radius, robot_padding, goal_check_distance, path_resolution, max_iterations, show_live_plot)
     find_path.find_path()
 
 
